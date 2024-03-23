@@ -641,13 +641,3 @@ NODE.NavigateToBestCandidate = NavigateToBestCandidate;
 NODE.NavigateToBestCandidateV2 = NavigateToBestCandidateV2;
 NODE.NavigateToClosestCandidate = NavigateToClosestCandidate;
 NODE.NavigateToArbitraryCandidate = NavigateToArbitraryCandidate;
-
----------------------------------------------------------------
--- Extend Carpenter API
----------------------------------------------------------------
-do local Lib = LibStub:GetLibrary('Carpenter')
-	if not Lib then return end
-	Lib:ExtendAPI('IgnoreNode', function(self, ...) self:SetAttribute('nodeignore', ...) end)
-	Lib:ExtendAPI('PriorityNode', function(self, ...) self:SetAttribute('nodepriority', ...) end)
-	Lib:ExtendAPI('SingletonNode', function(self, ...) self:SetAttribute('nodesingleton', ...) end)
-end
