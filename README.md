@@ -1,6 +1,8 @@
-# ConsolePortNode Library
+# ConsolePortNode
 
-This library, part of the ConsolePort project, provides functionality for interface node calculations and management in World of Warcraft addons. It scans a given interface hierarchy, calculates distances, and determines the travel path between nodes. A node is any object in the hierarchy that is considered interactive, either by clicking or mousing over it.
+This library, part of ConsolePort, provides functionality for interface node calculations and management in World of Warcraft addons. It scans a given interface hierarchy, calculates distances, and determines the travel path between nodes. A node is any object in the hierarchy that is considered interactive, either by clicking or mousing over it.
+
+This library can be used to create virtual cursors for accessibility reasons, where the current method uses four discrete directions for movement, but is able to make decisions on the best candidate node to move in a dynamic UI layout without perfect grids that match those four directions. A virtual cursor based on this library works sufficiently well for almost any UI hierarchy - when reasonably sane in structure.
 
 ## API
 
