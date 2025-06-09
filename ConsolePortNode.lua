@@ -219,8 +219,8 @@ function IsRelevant(node)
 	return node
 		and not IsForbidden(node)
 		and not IsAnchoringRestricted(node)
-		and not GetAttribute(node, 'nodeignore')
 		and IsVisible(node)
+		and not GetAttribute(node, 'nodeignore')
 end
 
 function IsTree(node)
