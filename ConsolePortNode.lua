@@ -1,7 +1,7 @@
 ----------------------------------------------------------------
 -- ConsolePortNode
 ----------------------------------------------------------------
--- 
+--
 -- Author:  Sebastian Lindfors (Munk / MunkDev)
 -- Website: https://github.com/seblindfors
 -- Licence: GPL version 2 (General Public License)
@@ -216,7 +216,11 @@ function IsInteractive(node, object)
 end
 
 function IsRelevant(node)
-	return node and not IsForbidden(node) and not GetAttribute(node, 'nodeignore') and IsVisible(node)
+	return node
+		and not IsForbidden(node)
+		and not IsAnchoringRestricted(node)
+		and not GetAttribute(node, 'nodeignore')
+		and IsVisible(node)
 end
 
 function IsTree(node)
@@ -385,7 +389,7 @@ function GetRectLevelIndex(level)
 	for index, item in IterateRects() do
 		if (item.level < level) then
 			return index
-		end 		
+		end
 	end
 	return #RECTS+1
 end
@@ -492,7 +496,7 @@ end
 function GetCandidateVectorForCurrent(cur)
 	local x, y = GetCenterScaled(cur.node)
 	return {x = x; y = y; h = huge; v = huge; a = 0}
-end 
+end
 
 function GetCandidatesForVector(vector, comparator, candidates)
 	local thisX, thisY = vector.x, vector.y
@@ -502,12 +506,12 @@ function GetCandidatesForVector(vector, comparator, candidates)
 		local distX, distY = GetDistance(thisX, thisY, destX, destY)
 
 		if comparator(destX, destY, distX, distY, thisX, thisY) then
-			candidates[destination] = { 
+			candidates[destination] = {
 				x = destX; y = destY; h = distX; v = distY;
 				a = GetAngleBetween(thisX, thisY, destX, destY);
 			}
 		end
-	end 
+	end
 	return candidates
 end
 
@@ -527,7 +531,7 @@ end
 ---------------------------------------------------------------
 -- Get the best candidate to a given origin and direction
 ---------------------------------------------------------------
--- This method uses vectors over manhattan distance, stretching 
+-- This method uses vectors over manhattan distance, stretching
 -- from an origin node to new candidate nodes, using direction.
 -- The vectors are artificially inflated in the secondary plane
 -- to the travel direction (X for up/down, Y for left/right),
