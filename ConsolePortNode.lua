@@ -35,7 +35,7 @@
 --  nodepass         : (boolean) include children, skip node
 ---------------------------------------------------------------
 local LibStub = _G.LibStub
-local NODE = LibStub:NewLibrary('ConsolePortNode', 1)
+local NODE = LibStub:NewLibrary('ConsolePortNode', 3)
 if not NODE then return end
 
 -- Eligibility
@@ -66,12 +66,15 @@ local GetRectLevelIndex
 local IterateCache
 local IterateRects
 -- Rect calculations
+local GetHitRectScaled
 local GetHitRectCenter
 local GetCenterPos
 local GetCenterScaled
 local DoNodesIntersect
 local GetAbsFrameLevel
 local PointInRange
+local XInRange
+local YInRange
 local CanLevelsIntersect
 local DoNodeAndRectIntersect
 -- Vector calculations
@@ -81,13 +84,15 @@ local GetDistance
 local GetDistanceSum
 local IsCloser
 local GetCandidateVectorForCurrent
-local GetCandidatesForVector
+local GetCandidatesForVectorV1
+local GetCandidatesForVectorV2
 local GetPriorityCandidate
 -- Navigation
 local GetNavigationKey
 local SetNavigationKey
-local NavigateToBestCandidate
+local NavigateToBestCandidateV1
 local NavigateToBestCandidateV2
+local NavigateToBestCandidateV3
 local NavigateToClosestCandidate
 local NavigateToArbitraryCandidate
 
@@ -99,6 +104,7 @@ local NavigateToArbitraryCandidate
 -- BOUNDS : limit the boundaries of scans/selection to screen
 -- SCALAR : scale 2ndary plane to improve intuitive node selection
 -- DIVDEG : angle divisor for vector scaling
+-- MDELTA : minimum distance between points in a candidate
 -- USABLE : what to consider as interactive nodes by default
 -- LEVELS : frame level quantifiers (each strata has 10k levels)
 ---------------------------------------------------------------
@@ -106,6 +112,7 @@ local CACHE, RECTS = {}, {};
 local BOUNDS = CreateVector3D(GetScreenWidth(), GetScreenHeight(), UIParent:GetEffectiveScale());
 local SCALAR = 3;
 local DIVDEG = 15;
+local MDELTA = 24;
 local USABLE = {
 	Button      = true;
 	CheckButton = true;
@@ -163,7 +170,7 @@ local NODE = setmetatable(Mixin(NODE, {
 }), {
 	-- @param  varargs : list of frames to scan recursively
 	-- @return cache   : table of nodes on screen
-	__call = function(self, ...)
+	__call = function(_, ...)
 		ClearCache()
 		Scan(nil, ...)
 		ScrubCache(GetNextCacheItem(nil))
@@ -191,8 +198,8 @@ end
 ---------------------------------------------------------------
 local tinsert, tremove, pairs, ipairs, next, wipe =
 	tinsert, tremove, pairs, ipairs, next, wipe;
-local vlen, huge, abs, deg, atan2 =
-	Vector2D_GetLength, math.huge, math.abs, math.deg, math.atan2;
+local vlen, huge, abs, deg, atan2, max, ceil =
+	Vector2D_GetLength, math.huge, math.abs, math.deg, math.atan2, math.max, math.ceil;
 -- Operate within the frame metatable
 setfenv(1, GetFrameMetatable().__index)
 
@@ -423,6 +430,14 @@ function GetHitRectCenter(node)
 	return (x+l) + div2(w-r), (y+b) + div2(h-t)
 end
 
+function GetHitRectScaled(node)
+	local x, y, w, h = GetRect(node)
+	if not x then return end
+	local l, r, t, b = GetHitRectInsets(node)
+	local s = GetEffectiveScale(node) / BOUNDS.z;
+	return (x+l) * s, (y+b) * s, (w-r) * s, (h-t) * s;
+end
+
 function GetCenterScaled(node)
 	local x, y = GetHitRectCenter(node)
 	if not x then return end
@@ -458,6 +473,14 @@ function PointInRange(pt, min, max)
 	return pt and pt >= min and pt <= max
 end
 
+function XInRange(pt, rect, scale, limit)
+	return PointInRange(pt, nrmlz(rect, scale, limit, GetLeft, GetRight))
+end
+
+function YInRange(pt, rect, scale, limit)
+	return PointInRange(pt, nrmlz(rect, scale, limit, GetBottom, GetTop))
+end
+
 function CanLevelsIntersect(level1, level2)
 	return level1 < level2
 end
@@ -465,8 +488,8 @@ end
 function DoNodeAndRectIntersect(node, rect)
 	local x, y = GetCenterScaled(node)
 	local scale, limit = GetEffectiveScale(rect), BOUNDS.z;
-	return PointInRange(x, nrmlz(rect, scale, limit, GetLeft, GetRight)) and
-		   PointInRange(y, nrmlz(rect, scale, limit, GetBottom, GetTop))
+	return XInRange(x, rect, scale, limit) and
+		   YInRange(y, rect, scale, limit)
 end
 
 ---------------------------------------------------------------
@@ -495,12 +518,12 @@ end
 
 function GetCandidateVectorForCurrent(cur)
 	local x, y = GetCenterScaled(cur.node)
-	return {x = x; y = y; h = huge; v = huge; a = 0}
+	return {x = x; y = y; h = huge; v = huge; a = 0; o = cur}
 end
 
-function GetCandidatesForVector(vector, comparator, candidates)
+function GetCandidatesForVectorV1(vector, comparator, candidates)
 	local thisX, thisY = vector.x, vector.y
-	for i, destination in IterateCache() do
+	for _, destination in IterateCache() do
 		local candidate = destination.node
 		local destX, destY = GetCenterScaled(candidate)
 		local distX, distY = GetDistance(thisX, thisY, destX, destY)
@@ -513,6 +536,49 @@ function GetCandidatesForVector(vector, comparator, candidates)
 		end
 	end
 	return candidates
+end
+
+function GetCandidatesForVectorV2(vector, comparator, candidates)
+	local thisX, thisY, node = vector.x, vector.y, vector.o.node;
+
+	local function Candidate(candidate, destX, destY, distX, distY)
+		tinsert(candidates, {
+			x = destX; y = destY; h = distX; v = distY;
+			a = GetAngleBetween(thisX, thisY, destX, destY);
+			o = candidate;
+		})
+	end
+
+	for _, destination in IterateCache() do
+		local candidate = destination.node;
+		if node ~= candidate then
+			local x, y, w, h = GetHitRectScaled(candidate)
+			local destX, destY = x + div2(w), y + div2(h); -- center
+			local distX, distY = GetDistance(thisX, thisY, destX, destY)
+
+			if comparator(destX, destY, distX, distY, thisX, thisY) then
+				local aspectRatio = max(w / h, h / w)
+				if aspectRatio >= 2 then -- > 2:1 valid for extra points
+					local isWide = w > h;
+					local length = isWide and w or h;
+					local points = ceil(aspectRatio / 2) * 2 - 1; -- odd
+					local delta  = max(length / points, MDELTA);
+					local offset = div2(delta);
+					points = max(ceil(length / delta), 1);
+
+					for i = 1, points do
+						destX = isWide and x + (i * delta) - offset or destX;
+						destY = isWide and destY or y + (i * delta) - offset;
+						Candidate(destination, destX, destY, GetDistance(thisX, thisY, destX, destY))
+					end
+				else -- the aspect ratio is acceptable, use single point.
+					Candidate(destination, destX, destY, distX, distY);
+				end
+			end
+		end
+	end
+
+	return candidates;
 end
 
 ---------------------------------------------------------------
@@ -538,10 +604,10 @@ end
 -- prioritizing candidates more linearly aligned to the origin.
 -- Comparing Euclidean distance on vectors yields the best node.
 
-function NavigateToBestCandidate(cur, key, curNodeChanged) key = GetNavigationKey(key)
+function NavigateToBestCandidateV1(cur, key, curNodeChanged) key = GetNavigationKey(key)
 	if cur and NODE.picky[key] then
 		local this = GetCandidateVectorForCurrent(cur)
-		local candidates = GetCandidatesForVector(this, NODE.picky[key], {})
+		local candidates = GetCandidatesForVectorV1(this, NODE.picky[key], {})
 
 		local hMult = (key == 'UP' or key == 'DOWN') and SCALAR or 1
 		local vMult = (key == 'LEFT' or key == 'RIGHT') and SCALAR or 1
@@ -570,7 +636,7 @@ function NavigateToBestCandidateV2(cur, key, curNodeChanged) key = GetNavigation
 	if cur and NODE.balanced[key] then
 		local this = GetCandidateVectorForCurrent(cur)
 		local optimalAngle = NODE.angles[key];
-		local candidates = GetCandidatesForVector(this, NODE.balanced[key], {})
+		local candidates = GetCandidatesForVectorV1(this, NODE.balanced[key], {})
 
 		for candidate, vector in pairs(candidates) do
 			local offset = GetAngleDistance(optimalAngle, vector.a)
@@ -585,6 +651,35 @@ function NavigateToBestCandidateV2(cur, key, curNodeChanged) key = GetNavigation
 end
 
 ---------------------------------------------------------------
+-- V3: V2 with multiple points per candidate
+---------------------------------------------------------------
+-- This method is similar to V2, but it uses multiple points
+-- per every candidate with extreme aspect ratios, which
+-- allows for more accurate selection of candidates that are
+-- located in a given direction, even if they are not aligned
+-- with the origin node. The candidates are still compared
+-- using the angle between the origin and the endpoint.
+
+function NavigateToBestCandidateV3(cur, key, curNodeChanged) key = GetNavigationKey(key)
+	if not cur then return end;
+	local algorithm, optimalAngle = NODE.permissive[key], NODE.angles[key];
+	if not algorithm then return end;
+
+	local this = GetCandidateVectorForCurrent(cur)
+	local candidates = GetCandidatesForVectorV2(this, algorithm, {})
+
+	for _, candidate in ipairs(candidates) do
+		local offset = GetAngleDistance(optimalAngle, candidate.a)
+		local weight = 1 + (offset / DIVDEG)
+		if IsCloser(candidate.h * weight, candidate.v * weight, this.h, this.v) then
+			this, curNodeChanged = candidate, true;
+			this.h, this.v = (this.h * weight), (this.v * weight);
+		end
+	end
+	return this.o, curNodeChanged;
+end
+
+---------------------------------------------------------------
 -- Set the closest candidate to a given origin
 ---------------------------------------------------------------
 -- Used as a fallback method when a proper candidate can't be
@@ -594,7 +689,7 @@ end
 function NavigateToClosestCandidate(cur, key, curNodeChanged) key = GetNavigationKey(key)
 	if cur and NODE.permissive[key] then
 		local this = GetCandidateVectorForCurrent(cur)
-		local candidates = GetCandidatesForVector(this, NODE.permissive[key], {})
+		local candidates = GetCandidatesForVectorV1(this, NODE.permissive[key], {})
 
 		for candidate, vector in pairs(candidates) do
 			if IsCloser(vector.h, vector.v, this.h, this.v) then
@@ -648,7 +743,8 @@ NODE.ClearCache = ClearCache;
 NODE.GetScrollButtons = GetScrollButtons;
 NODE.GetNavigationKey = GetNavigationKey;
 NODE.SetNavigationKey = SetNavigationKey;
-NODE.NavigateToBestCandidate = NavigateToBestCandidate;
+NODE.NavigateToBestCandidate = NavigateToBestCandidateV1;
 NODE.NavigateToBestCandidateV2 = NavigateToBestCandidateV2;
+NODE.NavigateToBestCandidateV3 = NavigateToBestCandidateV3;
 NODE.NavigateToClosestCandidate = NavigateToClosestCandidate;
 NODE.NavigateToArbitraryCandidate = NavigateToArbitraryCandidate;
