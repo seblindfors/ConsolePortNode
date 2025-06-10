@@ -77,6 +77,7 @@ local XInRange
 local YInRange
 local CanLevelsIntersect
 local DoNodeAndRectIntersect
+local GetOffsetPointInfo
 -- Vector calculations
 local GetAngleBetween
 local GetAngleDistance
@@ -492,6 +493,21 @@ function DoNodeAndRectIntersect(node, rect)
 		   YInRange(y, rect, scale, limit)
 end
 
+function GetOffsetPointInfo(w, h)
+	local aspectRatio = max(w / h, h / w)
+	if aspectRatio >= 2 then -- > 2:1 valid for extra points
+		local isWide = w > h;
+		local length = isWide and w or h;
+		local points = ceil(aspectRatio / 2) * 2 - 1; -- odd
+		local delta  = max(length / points, MDELTA);
+		local offset = div2(delta);
+		points = max(ceil(length / delta), 1);
+		return points, delta, offset, isWide;
+	else
+		return 1, w, div2(w), true; -- single point
+	end
+end
+
 ---------------------------------------------------------------
 -- Vector calculations
 ---------------------------------------------------------------
@@ -541,38 +557,37 @@ end
 function GetCandidatesForVectorV2(vector, comparator, candidates)
 	local thisX, thisY, node = vector.x, vector.y, vector.o.node;
 
-	local function Candidate(candidate, destX, destY, distX, distY)
-		tinsert(candidates, {
-			x = destX; y = destY; h = distX; v = distY;
-			a = GetAngleBetween(thisX, thisY, destX, destY);
-			o = candidate;
-		})
+	local x, y, w, h = GetHitRectScaled(node)
+	local points, delta, offset, isWide = GetOffsetPointInfo(w, h)
+	local destX, destY, distX, distY;
+
+	for i = 1, points do
+		destX = isWide and x + (i * delta) - offset or x + div2(w);
+		destY = isWide and y + div2(h) or y + (i * delta) - offset;
+		distX, distY = GetDistance(thisX, thisY, destX, destY)
+		if comparator(destX, destY, distX, distY, thisX, thisY) then
+			thisX, thisY = destX, destY;
+		end
 	end
 
 	for _, destination in IterateCache() do
 		local candidate = destination.node;
 		if node ~= candidate then
-			local x, y, w, h = GetHitRectScaled(candidate)
-			local destX, destY = x + div2(w), y + div2(h); -- center
-			local distX, distY = GetDistance(thisX, thisY, destX, destY)
+			x, y, w, h = GetHitRectScaled(candidate)
+			destX, destY = x + div2(w), y + div2(h); -- center
+			distX, distY = GetDistance(thisX, thisY, destX, destY)
 
 			if comparator(destX, destY, distX, distY, thisX, thisY) then
-				local aspectRatio = max(w / h, h / w)
-				if aspectRatio >= 2 then -- > 2:1 valid for extra points
-					local isWide = w > h;
-					local length = isWide and w or h;
-					local points = ceil(aspectRatio / 2) * 2 - 1; -- odd
-					local delta  = max(length / points, MDELTA);
-					local offset = div2(delta);
-					points = max(ceil(length / delta), 1);
-
-					for i = 1, points do
-						destX = isWide and x + (i * delta) - offset or destX;
-						destY = isWide and destY or y + (i * delta) - offset;
-						Candidate(destination, destX, destY, GetDistance(thisX, thisY, destX, destY))
-					end
-				else -- the aspect ratio is acceptable, use single point.
-					Candidate(destination, destX, destY, distX, distY);
+				points, delta, offset, isWide = GetOffsetPointInfo(w, h)
+				for i = 1, points do
+					destX = isWide and x + (i * delta) - offset or destX;
+					destY = isWide and destY or y + (i * delta) - offset;
+					distX, distY = GetDistance(thisX, thisY, destX, destY)
+					tinsert(candidates, {
+						x = destX; y = destY; h = distX; v = distY;
+						a = GetAngleBetween(thisX, thisY, destX, destY);
+						o = destination;
+					})
 				end
 			end
 		end
