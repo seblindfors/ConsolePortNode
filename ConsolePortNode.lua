@@ -35,7 +35,7 @@
 --  nodepass         : (boolean) include children, skip node
 ---------------------------------------------------------------
 local LibStub = _G.LibStub
-local NODE = LibStub:NewLibrary('ConsolePortNode', 3)
+local NODE = LibStub:NewLibrary('ConsolePortNode', 4)
 if not NODE then return end
 
 -- Eligibility
@@ -47,8 +47,10 @@ local IsTree
 local IsDrawn
 local IsCandidate
 -- Attachments
+local FindSuperNode
 local GetSuperNode
 local GetScrollButtons
+local CheckClipping
 -- Recursive scanner
 local Scan
 local ScanLocal
@@ -111,6 +113,7 @@ local NavigateToArbitraryCandidate
 ---------------------------------------------------------------
 local CACHE, RECTS = {}, {};
 local BOUNDS = CreateVector3D(GetScreenWidth(), GetScreenHeight(), UIParent:GetEffectiveScale());
+local DEBUG  = false;
 local SCALAR = 3;
 local DIVDEG = 15;
 local MDELTA = 24;
@@ -201,9 +204,35 @@ local tinsert, tremove, pairs, ipairs, next, wipe =
 	tinsert, tremove, pairs, ipairs, next, wipe;
 local vlen, huge, abs, deg, atan2, max, ceil =
 	Vector2D_GetLength, math.huge, math.abs, math.deg, math.atan2, math.max, math.ceil;
+
+if DEBUG then
+	DEBUG = Mixin(CreateFrame('Frame', nil, UIParent), ColorMixin)
+	DEBUG:SetAllPoints() DEBUG:SetFrameStrata('TOOLTIP')
+	DEBUG:SetRGBA(RED_FONT_COLOR, GREEN_FONT_COLOR, BLUE_FONT_COLOR, YELLOW_FONT_COLOR)
+	DEBUG.pool = CreateTexturePool(DEBUG, 'OVERLAY', 7)
+	DEBUG.draw = function(self, x, y, c)
+		local square, new = self.pool:Acquire()
+		if new then square:SetSize(4, 4) end
+		square:SetPoint('BOTTOMLEFT', UIParent, 'BOTTOMLEFT', x, y)
+		square:SetColorTexture(c:GetRGB())
+		square:Show()
+	end;
+	NODE.Info = function(node) return {
+		IsCandidate       = IsCandidate(node);
+		IsDrawn           = IsDrawn(node, FindSuperNode(node));
+		IsInteractive     = IsInteractive(node, node:GetObjectType());
+		IsMouseResponsive = IsMouseResponsive(node);
+		IsRelevant        = IsRelevant(node);
+		IsTree            = IsTree(node);
+		IsUsable          = IsUsable(node:GetObjectType());
+		ObjectType        = node:GetObjectType();
+		DebugName         = node:GetDebugName();
+		SuperName         = FindSuperNode(node) and FindSuperNode(node):GetDebugName();
+	} end _G.NODE = NODE; -- for debugging
+end
+
 -- Operate within the frame metatable
 setfenv(1, GetFrameMetatable().__index)
-
 ---------------------------------------------------------------
 -- Eligibility
 ---------------------------------------------------------------
@@ -240,8 +269,8 @@ function IsDrawn(node, super)
 	local mX, mY = BOUNDS:GetXYZ()
 	if ( PointInRange(nX, 0, mX) and PointInRange(nY, 0, mY) ) then
 		-- assert node isn't clipped inside a scroll child
-		if super and not IsObjectType(node, 'Slider') then
-			return DoNodesIntersect(node, super)
+		if super then
+			return CheckClipping(node, super)
 		else
 			return true
 		end
@@ -279,6 +308,35 @@ function GetScrollButtons(node)
 	end
 end
 
+function FindSuperNode(node)
+	local parent, super = node
+	while parent do
+		if GetSuperNode(nil, parent) then
+			super = parent
+			break
+		end
+		parent = parent:GetParent()
+	end
+	return super
+end
+
+function CheckClipping(node, super)
+	if IsObjectType(super, 'ScrollFrame') then
+		local parent, child = super:GetScrollChild(), GetParent(node)
+		while child do
+			if child == super then
+				return true
+			end
+			if child == parent then
+				return DoNodesIntersect(node, super)
+			end
+			child = child:GetParent()
+		end
+		return true
+	end
+	return DoNodesIntersect(node, super)
+end
+
 ---------------------------------------------------------------
 -- Recursive scanner
 ---------------------------------------------------------------
@@ -303,14 +361,7 @@ end
 
 function ScanLocal(node)
 	if IsRelevant(node) then
-		local parent, super = node
-		while parent do
-			if GetSuperNode(nil, parent) then
-				super = parent
-				break
-			end
-			parent = parent:GetParent()
-		end
+		local super = FindSuperNode(node)
 		ClearCache()
 		Scan(super, node)
 		local object = GetObjectType(node)
@@ -742,6 +793,55 @@ function GetPriorityCandidate(x, y, targNode, targDist, targPrio)
 		end
 	end
 	return targNode;
+end
+
+---------------------------------------------------------------
+-- Debugging
+---------------------------------------------------------------
+if DEBUG then
+	local _ClearCache = ClearCache;
+	function ClearCache(...)
+		DEBUG.pool:ReleaseAll()
+		return _ClearCache(...)
+	end
+
+	local _GetCandidatesForVectorV1 = GetCandidatesForVectorV1;
+	function GetCandidatesForVectorV1(...)
+		local candidates = _GetCandidatesForVectorV1(...)
+		for _, vector in pairs(candidates) do
+			DEBUG:draw(vector.x, vector.y, DEBUG.g)
+		end
+		return candidates;
+	end
+	local _GetCandidatesForVectorV2 = GetCandidatesForVectorV2;
+
+	function GetCandidatesForVectorV2(...)
+		local candidates = _GetCandidatesForVectorV2(...)
+		for _, vector in ipairs(candidates) do
+			DEBUG:draw(vector.x, vector.y, DEBUG.b)
+		end
+		return candidates;
+	end
+
+	local _NavigateToBestCandidateV2 = NavigateToBestCandidateV2;
+	function NavigateToBestCandidateV2(...)
+		local cur, curNodeChanged = _NavigateToBestCandidateV2(...)
+		if cur then
+			local x, y = GetCenterScaled(cur.node)
+			DEBUG:draw(x, y, DEBUG.r)
+		end
+		return cur, curNodeChanged;
+	end
+
+	local _NavigateToBestCandidateV3 = NavigateToBestCandidateV3;
+	function NavigateToBestCandidateV3(...)
+		local cur, curNodeChanged = _NavigateToBestCandidateV3(...)
+		if cur then
+			local x, y = GetCenterScaled(cur.node)
+			DEBUG:draw(x, y, DEBUG.a)
+		end
+		return cur, curNodeChanged;
+	end
 end
 
 ---------------------------------------------------------------
