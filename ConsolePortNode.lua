@@ -35,7 +35,7 @@
 --  nodepass         : (boolean) include children, skip node
 ---------------------------------------------------------------
 local LibStub = _G.LibStub
-local NODE = LibStub:NewLibrary('ConsolePortNode', 5)
+local NODE = LibStub:NewLibrary('ConsolePortNode', 6)
 if not NODE then return end
 
 -- Eligibility
@@ -200,7 +200,8 @@ end
 ---------------------------------------------------------------
 -- Upvalues
 ---------------------------------------------------------------
-local issecretvalue = issecretvalue or nop;
+local issecret, scrubsecret =
+	issecretvalue or nop, scrubsecretvalues or function(...)return...end;
 local tinsert, tremove, pairs, ipairs, next, wipe =
 	tinsert, tremove, pairs, ipairs, next, wipe;
 local vlen, huge, abs, deg, atan2, max, ceil =
@@ -257,8 +258,8 @@ function IsRelevant(node)
 	return node
 		and not IsForbidden(node)
 		and not IsAnchoringRestricted(node)
-		and IsVisible(node)
-		and not GetAttribute(node, 'nodeignore')
+		and scrubsecret(IsVisible(node))
+		and not scrubsecret(GetAttribute(node, 'nodeignore'))
 end
 
 function IsTree(node)
@@ -478,14 +479,14 @@ end
 
 function GetHitRectCenter(node)
 	local x, y, w, h = GetRect(node)
-	if issecretvalue(x) or not x then return end
+	if issecret(x) or not x then return end
 	local l, r, t, b = div2(GetHitRectInsets(node))
 	return (x+l) + div2(w-r), (y+b) + div2(h-t)
 end
 
 function GetHitRectScaled(node)
 	local x, y, w, h = GetRect(node)
-	if issecretvalue(x) or not x then return end
+	if issecret(x) or not x then return end
 	local l, r, t, b = GetHitRectInsets(node)
 	local s = GetEffectiveScale(node) / BOUNDS.z;
 	return (x+l) * s, (y+b) * s, (w-r) * s, (h-t) * s;
@@ -493,14 +494,14 @@ end
 
 function GetCenterScaled(node)
 	local x, y = GetHitRectCenter(node)
-	if issecretvalue(x) or not x then return end
+	if issecret(x) or not x then return end
 	local scale = GetEffectiveScale(node) / BOUNDS.z;
 	return x * scale, y * scale
 end
 
 function GetCenterPos(node)
 	local x, y = GetCenter(node)
-	if issecretvalue(x) or not x then return end
+	if issecret(x) or not x then return end
 	local l, b = GetHitRectCenter(node)
 	return (l-x), (b-y)
 end
