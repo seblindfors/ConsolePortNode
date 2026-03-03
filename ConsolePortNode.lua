@@ -35,7 +35,7 @@
 --  nodepass         : (boolean) include children, skip node
 ---------------------------------------------------------------
 local LibStub = _G.LibStub
-local NODE = LibStub:NewLibrary('ConsolePortNode', 6)
+local NODE = LibStub:NewLibrary('ConsolePortNode', 7)
 if not NODE then return end
 
 -- Eligibility
@@ -260,6 +260,9 @@ function IsRelevant(node)
 		and not IsAnchoringRestricted(node)
 		and scrubsecret(IsVisible(node))
 		and not scrubsecret(GetAttribute(node, 'nodeignore'))
+		and scrubsecret(GetFrameStrata(node))
+		and scrubsecret(GetFrameLevel(node))
+		and true
 end
 
 function IsTree(node)
