@@ -39,7 +39,6 @@ local NODE = LibStub:NewLibrary('ConsolePortNode', 7)
 if not NODE then return end
 
 -- Eligibility
-local IsMouseResponsive
 local IsUsable
 local IsInteractive
 local IsRelevant
@@ -221,7 +220,6 @@ if DEBUG then
 		IsCandidate       = IsCandidate(node);
 		IsDrawn           = IsDrawn(node, FindSuperNode(node));
 		IsInteractive     = IsInteractive(node, node:GetObjectType());
-		IsMouseResponsive = IsMouseResponsive(node);
 		IsRelevant        = IsRelevant(node);
 		IsTree            = IsTree(node);
 		IsUsable          = IsUsable(node:GetObjectType());
@@ -236,11 +234,6 @@ setfenv(1, GetFrameMetatable().__index)
 ---------------------------------------------------------------
 -- Eligibility
 ---------------------------------------------------------------
-
-function IsMouseResponsive(node)
-	return ( GetScript(node, 'OnEnter') or GetScript(node, 'OnMouseDown') ) and true
-end
-
 function IsUsable(object)
 	return USABLE[object]
 end
@@ -249,7 +242,7 @@ function IsInteractive(node, object)
 	return 	not IsObjectType(node, 'ScrollFrame')
 			and IsMouseEnabled(node)
 			and not GetAttribute(node, 'nodepass')
-			and ( IsUsable(object) or IsMouseResponsive(node) )
+			and ( IsUsable(object) or IsMouseMotionEnabled(node) )
 end
 
 function IsRelevant(node)
@@ -593,7 +586,7 @@ function GetCandidatesForVectorV1(vector, comparator, candidates)
 		local distX, distY = GetDistance(thisX, thisY, destX, destY)
 
 		if comparator(destX, destY, distX, distY, thisX, thisY) then
-			candidates[destination] = AcquireCandidate(
+			candidates[#candidates+1] = AcquireCandidate(
 				destX, destY, distX, distY,
 				GetAngleBetween(thisX, thisY, destX, destY),
 				destination
@@ -676,9 +669,9 @@ function NavigateToBestCandidateV1(cur, key, curNodeChanged) key = GetNavigation
 		local hMult = (key == 'UP' or key == 'DOWN') and SCALAR or 1
 		local vMult = (key == 'LEFT' or key == 'RIGHT') and SCALAR or 1
 
-		for candidate, vector in pairs(candidates) do
+		for _, vector in ipairs(candidates) do
 			if IsCloser(vector.h * hMult, vector.v * vMult, this.h, this.v) then
-				this, cur, curNodeChanged = vector, candidate, curNodeChanged;
+				this, cur, curNodeChanged = vector, vector.o, curNodeChanged;
 				this.h, this.v = (this.h * hMult), (this.v * vMult);
 			end
 		end
@@ -702,11 +695,11 @@ function NavigateToBestCandidateV2(cur, key, curNodeChanged) key = GetNavigation
 		local optimalAngle = NODE.angles[key];
 		local candidates = GetCandidatesForVectorV1(this, NODE.balanced[key], {})
 
-		for candidate, vector in pairs(candidates) do
+		for _, vector in ipairs(candidates) do
 			local offset = GetAngleDistance(optimalAngle, vector.a)
 			local weight = 1 + (offset / DIVDEG)
 			if IsCloser(vector.h * weight, vector.v * weight, this.h, this.v) then
-				this, cur, curNodeChanged = vector, candidate, true;
+				this, cur, curNodeChanged = vector, vector.o, true;
 				this.h, this.v = (this.h * weight), (this.v * weight);
 			end
 		end
@@ -755,9 +748,9 @@ function NavigateToClosestCandidate(cur, key, curNodeChanged) key = GetNavigatio
 		local this = GetCandidateVectorForCurrent(cur)
 		local candidates = GetCandidatesForVectorV1(this, NODE.permissive[key], {})
 
-		for candidate, vector in pairs(candidates) do
+		for _, vector in ipairs(candidates) do
 			if IsCloser(vector.h, vector.v, this.h, this.v) then
-				this, cur, curNodeChanged = vector, candidate, true;
+				this, cur, curNodeChanged = vector, vector.o, true;
 			end
 		end
 		return cur, curNodeChanged;
@@ -806,7 +799,7 @@ if DEBUG then
 	local _GetCandidatesForVectorV1 = GetCandidatesForVectorV1;
 	function GetCandidatesForVectorV1(...)
 		local candidates = _GetCandidatesForVectorV1(...)
-		for _, vector in pairs(candidates) do
+		for _, vector in ipairs(candidates) do
 			DEBUG:draw(vector.x, vector.y, DEBUG.g)
 		end
 		return candidates;
