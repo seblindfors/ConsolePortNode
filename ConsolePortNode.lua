@@ -35,7 +35,7 @@
 --  nodepass         : (boolean) include children, skip node
 ---------------------------------------------------------------
 local LibStub = _G.LibStub
-local NODE = LibStub:NewLibrary('ConsolePortNode', 7)
+local NODE = LibStub:NewLibrary('ConsolePortNode', 8)
 if not NODE then return end
 
 -- Eligibility
