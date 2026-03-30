@@ -76,6 +76,7 @@ local PointInRange
 local CanLevelsIntersect
 local GetOffsetPointInfo
 -- Vector calculations
+local AcquireCandidate
 local GetAngleBetween
 local GetAngleDistance
 local GetDistance
@@ -107,6 +108,8 @@ local NavigateToArbitraryCandidate
 -- LEVELS : frame level quantifiers (each strata has 10k levels)
 ---------------------------------------------------------------
 local CACHE, RECTS = {}, {};
+local POOL, POOL_N = setmetatable({}, {__mode = 'v'}), 0;
+local THIS_VECTOR = {x = 0; y = 0; h = math.huge; v = math.huge; a = 0; o = nil};
 local BOUNDS = CreateVector3D(GetScreenWidth(), GetScreenHeight(), UIParent:GetEffectiveScale());
 local DEBUG  = false;
 local SCALAR = 3;
@@ -434,6 +437,7 @@ end
 function ClearCache()
 	wipe(CACHE)
 	wipe(RECTS)
+	POOL_N = 0;
 end
 
 function HasItems()
@@ -563,8 +567,22 @@ function GetAngleDistance(a1, a2)
 	return (180 - abs(abs(deg(a1) - deg(a2)) - 180));
 end
 
+function AcquireCandidate(x, y, h, v, a, o)
+	POOL_N = POOL_N + 1;
+	local c = POOL[POOL_N];
+	if not c then
+		c = {};
+		POOL[POOL_N] = c;
+	end
+	c.x, c.y, c.h, c.v, c.a, c.o = x, y, h, v, a, o;
+	return c;
+end
+
 function GetCandidateVectorForCurrent(cur)
-	return {x = cur.cx; y = cur.cy; h = huge; v = huge; a = 0; o = cur}
+	THIS_VECTOR.x, THIS_VECTOR.y = cur.cx, cur.cy;
+	THIS_VECTOR.h, THIS_VECTOR.v = huge, huge;
+	THIS_VECTOR.a, THIS_VECTOR.o = 0, cur;
+	return THIS_VECTOR;
 end
 
 function GetCandidatesForVectorV1(vector, comparator, candidates)
@@ -574,10 +592,11 @@ function GetCandidatesForVectorV1(vector, comparator, candidates)
 		local distX, distY = GetDistance(thisX, thisY, destX, destY)
 
 		if comparator(destX, destY, distX, distY, thisX, thisY) then
-			candidates[destination] = {
-				x = destX; y = destY; h = distX; v = distY;
-				a = GetAngleBetween(thisX, thisY, destX, destY);
-			}
+			candidates[destination] = AcquireCandidate(
+				destX, destY, distX, distY,
+				GetAngleBetween(thisX, thisY, destX, destY),
+				destination
+			)
 		end
 	end
 	return candidates
@@ -611,11 +630,11 @@ function GetCandidatesForVectorV2(vector, comparator, candidates)
 					destX = isWide and x + (i * delta) - offset or destX;
 					destY = isWide and destY or y + (i * delta) - offset;
 					distX, distY = GetDistance(thisX, thisY, destX, destY)
-					tinsert(candidates, {
-						x = destX; y = destY; h = distX; v = distY;
-						a = GetAngleBetween(thisX, thisY, destX, destY);
-						o = destination;
-					})
+					tinsert(candidates, AcquireCandidate(
+						destX, destY, distX, distY,
+						GetAngleBetween(thisX, thisY, destX, destY),
+						destination
+					))
 				end
 			end
 		end
