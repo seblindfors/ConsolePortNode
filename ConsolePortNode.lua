@@ -59,10 +59,8 @@ local ScrubCache
 local CacheItem
 local CacheRect
 local Insert
-local RemoveCacheItem
 local ClearCache
 local HasItems
-local GetNextCacheItem
 local GetFirstEligibleCacheItem
 local GetRectLevelIndex
 local IterateCache
@@ -75,10 +73,7 @@ local GetCenterScaled
 local DoNodesIntersect
 local GetAbsFrameLevel
 local PointInRange
-local XInRange
-local YInRange
 local CanLevelsIntersect
-local DoNodeAndRectIntersect
 local GetOffsetPointInfo
 -- Vector calculations
 local GetAngleBetween
@@ -177,7 +172,7 @@ local NODE = setmetatable(Mixin(NODE, {
 	__call = function(_, ...)
 		ClearCache()
 		Scan(nil, ...)
-		ScrubCache(GetNextCacheItem(nil))
+		ScrubCache()
 		return CACHE
 	end;
 })
@@ -373,24 +368,25 @@ function ScanLocal(node)
 		if IsInteractive(node, object) then
 			CacheItem(node, object, super, GetAbsFrameLevel(node))
 		end
-		ScrubCache(GetNextCacheItem(nil))
+		ScrubCache()
 	end
 	return CACHE
 end
 
-function ScrubCache(i, item)
-	while item do
-		local node, level = item.node, item.level
-		for l, rect in IterateRects() do
+function ScrubCache()
+	for i = #CACHE, 1, -1 do
+		local item = CACHE[i]
+		local cx, cy, level = item.cx, item.cy, item.level
+		for _, rect in IterateRects() do
 			if not CanLevelsIntersect(level, rect.level) then
 				break
 			end
-			if DoNodeAndRectIntersect(node, rect.node) then
-				i = RemoveCacheItem(i)
+			if cx and PointInRange(cx, rect.left, rect.right)
+				and PointInRange(cy, rect.bottom, rect.top) then
+				tremove(CACHE, i)
 				break
 			end
 		end
-		i, item = GetNextCacheItem(i)
 	end
 end
 
@@ -400,18 +396,31 @@ end
 
 function CacheItem(node, object, super, level)
 	CacheRect(node, level)
+	local cx, cy = GetCenterScaled(node)
+	local rx, ry, rw, rh = GetHitRectScaled(node)
 	Insert(CACHE, GetAttribute(node, 'nodepriority'), {
 		node   = node;
 		object = object;
 		super  = super;
 		level  = level;
+		cx     = cx;
+		cy     = cy;
+		rx     = rx;
+		ry     = ry;
+		rw     = rw;
+		rh     = rh;
 	})
 end
 
 function CacheRect(node, level)
+	local s = GetEffectiveScale(node) / BOUNDS.z;
 	Insert(RECTS, GetRectLevelIndex(level), {
-		node  = node;
-		level = level;
+		node   = node;
+		level  = level;
+		left   = GetLeft(node) * s;
+		right  = GetRight(node) * s;
+		bottom = GetBottom(node) * s;
+		top    = GetTop(node) * s;
 	})
 end
 
@@ -422,11 +431,6 @@ function Insert(t, k, v)
 	t[#t+1] = v
 end
 
-function RemoveCacheItem(cacheIndex)
-	tremove(CACHE, cacheIndex)
-	return cacheIndex - 1
-end
-
 function ClearCache()
 	wipe(CACHE)
 	wipe(RECTS)
@@ -434,10 +438,6 @@ end
 
 function HasItems()
 	return #CACHE > 0
-end
-
-function GetNextCacheItem(i)
-	return next(CACHE, i and i > 0 and i or nil)
 end
 
 function GetFirstEligibleCacheItem()
@@ -530,23 +530,8 @@ function PointInRange(pt, min, max)
 	return pt and pt >= min and pt <= max
 end
 
-function XInRange(pt, rect, scale, limit)
-	return PointInRange(pt, nrmlz(rect, scale, limit, GetLeft, GetRight))
-end
-
-function YInRange(pt, rect, scale, limit)
-	return PointInRange(pt, nrmlz(rect, scale, limit, GetBottom, GetTop))
-end
-
 function CanLevelsIntersect(level1, level2)
 	return level1 < level2
-end
-
-function DoNodeAndRectIntersect(node, rect)
-	local x, y = GetCenterScaled(node)
-	local scale, limit = GetEffectiveScale(rect), BOUNDS.z;
-	return XInRange(x, rect, scale, limit) and
-		   YInRange(y, rect, scale, limit)
 end
 
 function GetOffsetPointInfo(w, h)
@@ -589,15 +574,13 @@ function GetAngleDistance(a1, a2)
 end
 
 function GetCandidateVectorForCurrent(cur)
-	local x, y = GetCenterScaled(cur.node)
-	return {x = x; y = y; h = huge; v = huge; a = 0; o = cur}
+	return {x = cur.cx; y = cur.cy; h = huge; v = huge; a = 0; o = cur}
 end
 
 function GetCandidatesForVectorV1(vector, comparator, candidates)
 	local thisX, thisY = vector.x, vector.y
 	for _, destination in IterateCache() do
-		local candidate = destination.node
-		local destX, destY = GetCenterScaled(candidate)
+		local destX, destY = destination.cx, destination.cy
 		local distX, distY = GetDistance(thisX, thisY, destX, destY)
 
 		if comparator(destX, destY, distX, distY, thisX, thisY) then
@@ -611,9 +594,9 @@ function GetCandidatesForVectorV1(vector, comparator, candidates)
 end
 
 function GetCandidatesForVectorV2(vector, comparator, candidates)
-	local thisX, thisY, node = vector.x, vector.y, vector.o.node;
+	local thisX, thisY, cur = vector.x, vector.y, vector.o;
 
-	local x, y, w, h = GetHitRectScaled(node)
+	local x, y, w, h = cur.rx, cur.ry, cur.rw, cur.rh;
 	local points, delta, offset, isWide = GetOffsetPointInfo(w, h)
 	local destX, destY, distX, distY;
 
@@ -627,9 +610,8 @@ function GetCandidatesForVectorV2(vector, comparator, candidates)
 	end
 
 	for _, destination in IterateCache() do
-		local candidate = destination.node;
-		if node ~= candidate then
-			x, y, w, h = GetHitRectScaled(candidate)
+		if cur ~= destination then
+			x, y, w, h = destination.rx, destination.ry, destination.rw, destination.rh;
 			destX, destY = x + div2(w), y + div2(h); -- center
 			distX, distY = GetDistance(thisX, thisY, destX, destY)
 
@@ -787,7 +769,7 @@ end
 
 function GetPriorityCandidate(x, y, targNode, targDist, targPrio)
 	for _, this in IterateCache() do
-		local thisDist = GetDistanceSum(x, y, GetCenterScaled(this.node))
+		local thisDist = GetDistanceSum(x, y, this.cx, this.cy)
 		local thisPrio = GetAttribute(this.node, 'nodepriority')
 
 		if thisPrio and not targPrio then
