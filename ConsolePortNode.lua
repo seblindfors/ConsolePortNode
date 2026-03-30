@@ -199,8 +199,8 @@ local issecret, scrubsecret =
 	issecretvalue or nop, scrubsecretvalues or function(...)return...end;
 local select, tinsert, tremove, pairs, ipairs, next, wipe =
 	select, tinsert, tremove, pairs, ipairs, next, wipe;
-local huge, abs, deg, atan2, max, ceil =
-	math.huge, math.abs, math.deg, math.atan2, math.max, math.ceil;
+local huge, abs, deg, atan2, max, ceil, floor =
+	math.huge, math.abs, math.deg, math.atan2, math.max, math.ceil, math.floor;
 
 if DEBUG then
 	DEBUG = Mixin(CreateFrame('Frame', nil, UIParent), ColorMixin)
@@ -450,12 +450,15 @@ function GetFirstEligibleCacheItem()
 end
 
 function GetRectLevelIndex(level)
-	for index, item in IterateRects() do
-		if (item.level < level) then
-			return index
+	local lo, hi = 1, #RECTS
+	while lo <= hi do
+		local mid = lo + floor((hi - lo) * 0.5)
+		if RECTS[mid].level < level
+		then hi = mid - 1
+		else lo = mid + 1
 		end
 	end
-	return #RECTS+1
+	return lo
 end
 
 function IterateCache()
