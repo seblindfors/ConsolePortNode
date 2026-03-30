@@ -452,7 +452,7 @@ end
 function GetRectLevelIndex(level)
 	local lo, hi = 1, #RECTS
 	while lo <= hi do
-		local mid = lo + floor((hi - lo) * 0.5)
+		local mid = lo + floor((hi - lo)*.5)
 		if RECTS[mid].level < level
 		then hi = mid - 1
 		else lo = mid + 1
@@ -472,22 +472,13 @@ end
 ---------------------------------------------------------------
 -- Rect calculations
 ---------------------------------------------------------------
-local function div2(arg, ...)
-	if arg then return arg * 0.5, div2(...) end
-end
-local function nrmlz(node, effScale, cmpScale, func, ...)
-	if func then
-		return func(node) * (effScale/cmpScale),
-			nrmlz(node, effScale, cmpScale, ...)
-	end
-end
----------------------------------------------------------------
 
 function GetHitRectCenter(node)
 	local x, y, w, h = GetRect(node)
 	if issecret(x) or not x then return end
-	local l, r, t, b = div2(GetHitRectInsets(node))
-	return (x+l) + div2(w-r), (y+b) + div2(h-t)
+	local l, r, t, b = GetHitRectInsets(node)
+	l, r, t, b = l*.5, r*.5, t*.5, b*.5
+	return (x+l) + (w-r)*.5, (y+b) + (h-t)*.5
 end
 
 function GetHitRectScaled(node)
@@ -513,16 +504,12 @@ function GetCenterPos(node)
 end
 
 function DoNodesIntersect(n1, n2)
-	local left1, right1, top1, bottom1 = nrmlz(
-		n1, GetEffectiveScale(n1), BOUNDS.z,
-		GetLeft, GetRight, GetTop, GetBottom);
-	local left2, right2, top2, bottom2 = nrmlz(
-		n2, GetEffectiveScale(n2), BOUNDS.z,
-		GetLeft, GetRight, GetTop, GetBottom);
-	return  (left1   <  right2)
-		and (right1  >   left2)
-		and (bottom1 <    top2)
-		and (top1    > bottom2)
+	local s1 = GetEffectiveScale(n1) / BOUNDS.z
+	local s2 = GetEffectiveScale(n2) / BOUNDS.z
+	return  (GetLeft(n1)*s1   <  GetRight(n2)*s2)
+		and (GetRight(n1)*s1  >   GetLeft(n2)*s2)
+		and (GetBottom(n1)*s1 <    GetTop(n2)*s2)
+		and (GetTop(n1)*s1    > GetBottom(n2)*s2)
 end
 
 function GetAbsFrameLevel(node)
@@ -542,13 +529,13 @@ function GetOffsetPointInfo(w, h)
 	if aspectRatio >= 2 then -- > 2:1 valid for extra points
 		local isWide = w > h;
 		local length = isWide and w or h;
-		local points = ceil(aspectRatio / 2) * 2 - 1; -- odd
+		local points = ceil(aspectRatio*.5) * 2 - 1; -- odd
 		local delta  = max(length / points, MDELTA);
-		local offset = div2(delta);
+		local offset = delta*.5;
 		points = max(ceil(length / delta), 1);
 		return points, delta, offset, isWide;
 	else
-		return 1, w, div2(w), true; -- single point
+		return 1, w, w*.5, true; -- single point
 	end
 end
 
@@ -604,8 +591,8 @@ function GetCandidatesForVectorV2(vector, comparator, candidates)
 	local destX, destY, distX, distY;
 
 	for i = 1, points do
-		destX = isWide and x + (i * delta) - offset or x + div2(w);
-		destY = isWide and y + div2(h) or y + (i * delta) - offset;
+		destX = isWide and x + (i * delta) - offset or x + w*.5;
+		destY = isWide and y + h*.5 or y + (i * delta) - offset;
 		distX, distY = GetDistance(thisX, thisY, destX, destY)
 		if comparator(destX, destY, distX, distY, thisX, thisY) then
 			thisX, thisY = destX, destY;
@@ -615,7 +602,7 @@ function GetCandidatesForVectorV2(vector, comparator, candidates)
 	for _, destination in IterateCache() do
 		if cur ~= destination then
 			x, y, w, h = destination.rx, destination.ry, destination.rw, destination.rh;
-			destX, destY = x + div2(w), y + div2(h); -- center
+			destX, destY = x + w*.5, y + h*.5; -- center
 			distX, distY = GetDistance(thisX, thisY, destX, destY)
 
 			if comparator(destX, destY, distX, distY, thisX, thisY) then
