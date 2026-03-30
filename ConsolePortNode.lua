@@ -202,10 +202,10 @@ end
 ---------------------------------------------------------------
 local issecret, scrubsecret =
 	issecretvalue or nop, scrubsecretvalues or function(...)return...end;
-local tinsert, tremove, pairs, ipairs, next, wipe =
-	tinsert, tremove, pairs, ipairs, next, wipe;
-local vlen, huge, abs, deg, atan2, max, ceil =
-	Vector2D_GetLength, math.huge, math.abs, math.deg, math.atan2, math.max, math.ceil;
+local select, tinsert, tremove, pairs, ipairs, next, wipe =
+	select, tinsert, tremove, pairs, ipairs, next, wipe;
+local huge, abs, deg, atan2, max, ceil =
+	math.huge, math.abs, math.deg, math.atan2, math.max, math.ceil;
 
 if DEBUG then
 	DEBUG = Mixin(CreateFrame('Frame', nil, UIParent), ColorMixin)
@@ -257,8 +257,8 @@ end
 function IsRelevant(node)
 	return node
 		and not IsForbidden(node)
-		and not IsAnchoringRestricted(node)
 		and scrubsecret(IsVisible(node))
+		and not IsAnchoringRestricted(node)
 		and not scrubsecret(GetAttribute(node, 'nodeignore'))
 		and scrubsecret(GetFrameStrata(node))
 		and scrubsecret(GetFrameLevel(node))
@@ -345,22 +345,22 @@ end
 ---------------------------------------------------------------
 -- Recursive scanner
 ---------------------------------------------------------------
-function Scan(super, node, sibling, ...)
-	if IsRelevant(node) then
-		local object, level = GetObjectType(node), GetAbsFrameLevel(node)
-		if IsDrawn(node, super) then
-			if IsInteractive(node, object) then
-				CacheItem(node, object, super, level)
-			elseif IsMouseEnabled(node) then
-				CacheRect(node, level)
+function Scan(super, ...)
+	for i = 1, select('#', ...) do
+		local node = select(i, ...)
+		if IsRelevant(node) then
+			if IsDrawn(node, super) then
+				local object, level = GetObjectType(node), GetAbsFrameLevel(node)
+				if IsInteractive(node, object) then
+					CacheItem(node, object, super, level)
+				elseif IsMouseEnabled(node) then
+					CacheRect(node, level)
+				end
+			end
+			if IsTree(node) then
+				Scan(GetSuperNode(super, node), GetChildren(node))
 			end
 		end
-		if IsTree(node) then
-			Scan(GetSuperNode(super, node), GetChildren(node))
-		end
-	end
-	if sibling then
-		Scan(super, sibling, ...)
 	end
 end
 
@@ -577,7 +577,7 @@ function GetDistanceSum(...)
 end
 
 function IsCloser(hz1, vt1, hz2, vt2)
-	return vlen(hz1, vt1) < vlen(hz2, vt2)
+	return (hz1*hz1 + vt1*vt1) < (hz2*hz2 + vt2*vt2)
 end
 
 function GetAngleBetween(x1, y1, x2, y2)
