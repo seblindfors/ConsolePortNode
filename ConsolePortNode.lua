@@ -109,7 +109,7 @@ local NavigateToArbitraryCandidate
 ---------------------------------------------------------------
 local CACHE, RECTS = {}, {};
 local POOL, POOL_N = setmetatable({}, {__mode = 'v'}), 0;
-local THIS_VECTOR = {x = 0; y = 0; h = math.huge; v = math.huge; a = 0; o = nil};
+local THIS   = {x = 0; y = 0; h = math.huge; v = math.huge; a = 0; o = nil};
 local BOUNDS = CreateVector3D(GetScreenWidth(), GetScreenHeight(), UIParent:GetEffectiveScale());
 local DEBUG  = false;
 local SCALAR = 3;
@@ -579,10 +579,11 @@ function AcquireCandidate(x, y, h, v, a, o)
 end
 
 function GetCandidateVectorForCurrent(cur)
-	THIS_VECTOR.x, THIS_VECTOR.y = cur.cx, cur.cy;
-	THIS_VECTOR.h, THIS_VECTOR.v = huge, huge;
-	THIS_VECTOR.a, THIS_VECTOR.o = 0, cur;
-	return THIS_VECTOR;
+	local cx, cy = GetCenterScaled(cur.node);
+	THIS.x, THIS.y = cx or cur.cx, cy or cur.cy;
+	THIS.h, THIS.v = huge, huge;
+	THIS.a, THIS.o = 0, cur;
+	return THIS;
 end
 
 function GetCandidatesForVectorV1(vector, comparator, candidates)
@@ -605,7 +606,8 @@ end
 function GetCandidatesForVectorV2(vector, comparator, candidates)
 	local thisX, thisY, cur = vector.x, vector.y, vector.o;
 
-	local x, y, w, h = cur.rx, cur.ry, cur.rw, cur.rh;
+	local x, y, w, h = GetHitRectScaled(cur.node);
+	if not x then x, y, w, h = cur.rx, cur.ry, cur.rw, cur.rh end;
 	local points, delta, offset, isWide = GetOffsetPointInfo(w, h)
 	local destX, destY, distX, distY;
 
@@ -619,7 +621,7 @@ function GetCandidatesForVectorV2(vector, comparator, candidates)
 	end
 
 	for _, destination in IterateCache() do
-		if cur ~= destination then
+		if cur.node ~= destination.node then
 			x, y, w, h = destination.rx, destination.ry, destination.rw, destination.rh;
 			destX, destY = x + w*.5, y + h*.5; -- center
 			distX, distY = GetDistance(thisX, thisY, destX, destY)
