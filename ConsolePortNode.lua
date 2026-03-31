@@ -361,7 +361,7 @@ function ScanLocal(node)
 		ClearCache()
 		Scan(super, node)
 		local object = GetObjectType(node)
-		if IsInteractive(node, object) then
+		if IsInteractive(node, object) and IsDrawn(node, super) then
 			CacheItem(node, object, super, GetAbsFrameLevel(node))
 		end
 		ScrubCache()
